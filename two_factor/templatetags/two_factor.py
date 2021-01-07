@@ -4,11 +4,13 @@ import phonenumbers
 from django import template
 from django.utils.translation import gettext as _
 
-from ..models import PhoneDevice
+from ..models import PhoneDevice, EmailDevice
 
 register = template.Library()
 
 phone_mask = re.compile('(?<=.{3})[0-9](?=.{2})')
+
+email_mask = re.compile('(?<=.{3})[\w](?=.{4})')
 
 
 @register.filter
@@ -56,4 +58,35 @@ def device_action(device):
         return _('Send text message to %s') % number
     elif device.method == 'call':
         return _('Call number %s') % number
+    raise NotImplementedError('Unknown method: %s' % device.method)
+
+
+@register.filter
+def mask_email(email):
+    """
+    Masks an email, only first 3 and last 4 characters visible.
+
+    Example:
+
+    * `joh°°°°°95.co`
+
+    :param email: str
+    :return: str
+    """
+    return email_mask.sub('*', email)
+
+
+@register.filter
+def email_device_action(device):
+    """
+    Generates an actionable text for a :class:`~two_factor.models.EmailDevice`.
+
+    Example:
+
+    * Send email to `joh°°°°°95.co`
+    """
+    assert isinstance(device, EmailDevice)
+    email = mask_email(device.email)
+    if device.method == 'email':
+        return _('Send email to %s') % email
     raise NotImplementedError('Unknown method: %s' % device.method)

@@ -9,7 +9,7 @@ from django_otp.oath import totp
 from django_otp.util import hex_validator, random_hex
 from phonenumber_field.modelfields import PhoneNumberField
 
-from .gateways import make_call, send_sms
+from .gateways import make_call, send_sms, send_email
 
 try:
     import yubiotp
@@ -23,6 +23,17 @@ PHONE_METHODS = (
     ('call', _('Phone Call')),
     ('sms', _('Text Message')),
 )
+
+EMAIL_METHODS = (
+    ('email', _('Email')),
+)
+
+
+def get_available_email_methods():
+    methods = []
+    if getattr(settings, 'TWO_FACTOR_EMAIL_GATEWAY', None):
+        methods.append(('email', _('Email')))
+    return methods
 
 
 def get_available_phone_methods():
@@ -43,6 +54,7 @@ def get_available_yubikey_methods():
 
 def get_available_methods():
     methods = [('generator', _('Token generator'))]
+    methods.extend(get_available_email_methods())
     methods.extend(get_available_phone_methods())
     methods.extend(get_available_yubikey_methods())
     return methods
@@ -108,3 +120,54 @@ class PhoneDevice(ThrottlingMixin, Device):
 
     def get_throttle_factor(self):
         return getattr(settings, 'TWO_FACTOR_PHONE_THROTTLE_FACTOR', 1)
+
+
+class EmailDevice(Device):
+    """
+    Model with email and token seed linked to a user.
+    """
+
+    email = models.EmailField(verbose_name=u'email de vérification', unique=True)
+    key = models.CharField(max_length=40,
+                           validators=[key_validator],
+                           default=random_hex,
+                           help_text="Hex-encoded secret key")
+    method = models.CharField(max_length=10, choices=EMAIL_METHODS,
+                              verbose_name=_('method'))
+
+    def __repr__(self):
+        return '<EmailDevice(email={!r}, method={!r}>'.format(
+            self.email,
+            self.method,
+        )
+
+    @property
+    def bin_key(self):
+        return unhexlify(self.key.encode())
+
+    def verify_token(self, token):
+        # local import to avoid circular import
+        from two_factor.utils import totp_digits
+
+        try:
+            token = int(token)
+        except ValueError:
+            return False
+
+        for drift in range(-5, 1):
+            if totp(self.bin_key, drift=drift, digits=totp_digits()) == token:
+                return True
+        return False
+
+    def generate_challenge(self, description=None):
+        # local import to avoid circular import
+        from two_factor.utils import totp_digits
+
+        """
+        Sends the current TOTP token to `self.number` using `self.method`.
+        """
+        no_digits = totp_digits()
+        token = str(totp(self.bin_key, digits=no_digits)).zfill(no_digits)
+        if self.method == 'email':
+            gateways.EmailGateway.send_email(device=self, token=token, description=description)
+

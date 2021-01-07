@@ -41,6 +41,16 @@ core = [
         PhoneDeleteView.as_view(),
         name='phone_delete',
     ),
+    path(
+        'account/two_factor/backup/email/register/',
+        EmailSetupView.as_view(),
+        name='email_create',
+    ),
+    path(
+        'account/two_factor/backup/email/unregister/<int:pk>/',
+        EmailDeleteView.as_view(),
+        name='email_delete',
+    ),
 ]
 
 profile = [

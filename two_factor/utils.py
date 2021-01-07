@@ -3,7 +3,7 @@ from urllib.parse import quote, urlencode
 from django.conf import settings
 from django_otp import devices_for_user
 
-from two_factor.models import PhoneDevice
+from two_factor.models import PhoneDevice, EmailDevice
 
 
 def default_device(user):
@@ -18,6 +18,23 @@ def backup_phones(user):
     if not user or user.is_anonymous:
         return PhoneDevice.objects.none()
     return user.phonedevice_set.filter(name='backup')
+
+
+def backup_emails(user):
+    if not user or user.is_anonymous:
+        return EmailDevice.objects.none()
+    return user.emaildevice_set.filter(name='backup')
+
+
+def backup_devices(user):
+    devices = []
+    phones = [phone for phone in backup_phones(user)]
+    if len(phones) != 0:
+        devices.extend(phones)
+    emails = [email for email in backup_emails(user)]
+    if len(emails) != 0:
+        devices.extend(emails)
+    return devices
 
 
 def get_otpauth_url(accountname, secret, issuer=None, digits=None):
